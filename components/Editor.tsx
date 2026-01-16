@@ -9,6 +9,9 @@ const Editor: React.FC = () => {
   const [borderWidth, setBorderWidth] = useState(0);
   const [borderColor, setBorderColor] = useState('#ffffff');
   const [vibrance, setVibrance] = useState(1.2);
+  const [brightness, setBrightness] = useState(105);
+  const [contrast, setContrast] = useState(110);
+  const [sharpen, setSharpen] = useState(0);
   
   // Interatividade
   const [isDragging, setIsDragging] = useState(false);
@@ -45,7 +48,10 @@ const Editor: React.FC = () => {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, width, height);
 
-    ctx.filter = `saturate(${vibrance}) contrast(1.1) brightness(1.05)`;
+    // Aplicando filtros: Vibrance (saturate), Brilho, Contraste. 
+    // O 'Sharpen' é simulado com um boost adicional de contraste e nitidez visual via filter
+    const sharpenEffect = sharpen > 0 ? `contrast(${100 + (sharpen * 0.5)}%)` : '';
+    ctx.filter = `saturate(${vibrance}) contrast(${contrast}%) brightness(${brightness}%) ${sharpenEffect}`;
 
     layers.forEach(layer => {
       ctx.save();
@@ -95,7 +101,7 @@ const Editor: React.FC = () => {
       ctx.lineWidth = borderWidth * 2;
       ctx.strokeRect(0, 0, width, height);
     }
-  }, [layers, preset, borderWidth, borderColor, vibrance]);
+  }, [layers, preset, borderWidth, borderColor, vibrance, brightness, contrast, sharpen]);
 
   useEffect(() => {
     drawCanvas();
@@ -472,20 +478,72 @@ const Editor: React.FC = () => {
         )}
 
         <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4">
-          <h2 className="text-xl font-bold text-emerald-400">Efeitos Globais</h2>
-          <div className="space-y-1">
-            <label className="text-xs text-slate-500">Vibração Instagravável</label>
-            <input
-              type="range"
-              min="1"
-              max="3"
-              step="0.1"
-              value={vibrance}
-              onChange={(e) => setVibrance(Number(e.target.value))}
-              className="w-full accent-emerald-500"
-            />
+          <h2 className="text-xl font-bold text-emerald-400">Ajustes de Foto</h2>
+          
+          <div className="space-y-4 p-2">
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <label>Brilho</label>
+                <span>{brightness}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={brightness}
+                onChange={(e) => setBrightness(Number(e.target.value))}
+                className="w-full accent-blue-400"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <label>Contraste</label>
+                <span>{contrast}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={contrast}
+                onChange={(e) => setContrast(Number(e.target.value))}
+                className="w-full accent-indigo-400"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <label>Vibração (Saturação)</label>
+                <span>{Math.round(vibrance * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="3"
+                step="0.1"
+                value={vibrance}
+                onChange={(e) => setVibrance(Number(e.target.value))}
+                className="w-full accent-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500">
+                <label>Aguçar (Nitidez)</label>
+                <span>{sharpen}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={sharpen}
+                onChange={(e) => setSharpen(Number(e.target.value))}
+                className="w-full accent-yellow-400"
+              />
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dark-blue-700">
             <div className="space-y-1">
               <label className="text-xs text-slate-500">Moldura (Espessura)</label>
               <input
