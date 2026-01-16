@@ -71,6 +71,18 @@ const LogoGenerator: React.FC = () => {
     link.click();
   };
 
+  const downloadSVG = () => {
+    if (!generatedLogo) return;
+    const svgContent = `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg"><image href="${generatedLogo}" width="1024" height="1024" /></svg>`;
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `logo-ia-${Date.now()}.svg`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-12 space-y-12">
       <header className="text-center space-y-4">
@@ -154,15 +166,24 @@ const LogoGenerator: React.FC = () => {
                   className="w-full h-full object-contain rounded-2xl shadow-2xl transition-transform duration-700 group-hover:scale-105" 
                   alt="Logo Gerado" 
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-dark-blue-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-8">
+                <div className="absolute inset-0 bg-gradient-to-t from-dark-blue-900/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-8 gap-3">
                   <button 
                     onClick={downloadLogo}
-                    className="bg-white text-dark-blue-900 px-6 py-3 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-blue-50"
+                    className="bg-white text-dark-blue-900 px-4 py-3 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-blue-50 transition-all hover:-translate-y-1"
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Baixar PNG
+                    PNG
+                  </button>
+                  <button 
+                    onClick={downloadSVG}
+                    className="bg-indigo-600 text-white px-4 py-3 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-indigo-500 transition-all hover:-translate-y-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                    </svg>
+                    SVG
                   </button>
                 </div>
               </>
