@@ -1,6 +1,4 @@
-
 import React, { useState, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
 
 const LogoGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState('');
@@ -10,47 +8,33 @@ const LogoGenerator: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleGenerate = async () => {
-    if (!prompt.trim() && !refImage) return;
+    if (!prompt.trim()) {
+      alert("Por favor, descreva o logo que você quer gerar!");
+      return;
+    }
 
     setIsGenerating(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const contents: any = {
-        parts: [
-          { text: `Create a professional, modern, minimalist logo. Theme: ${prompt}. High quality, 4k, vector style, white background, centered.` }
-        ]
-      };
-
-      if (refImage) {
-        contents.parts.push({
-          inlineData: {
-            data: refImage.split(',')[1],
-            mimeType: 'image/png'
-          }
-        });
-      }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents,
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1"
-          }
-        }
+      const response = await fetch('/.netlify/functions/generate-logo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt })
       });
 
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          const base64EncodeString = part.inlineData.data;
-          setGeneratedLogo(`data:image/png;base64,${base64EncodeString}`);
-          break;
-        }
+      if (!response.ok) {
+        const error = await response.json();
+        alert(error.error || 'Erro ao gerar logo');
+        return;
       }
+
+      const data = await response.json();
+      setGeneratedLogo(data.image);
+      
     } catch (error) {
       console.error("Erro na geração do logo:", error);
-      alert("Falha ao gerar o logo. Verifique o console para mais detalhes.");
+      alert("Falha ao gerar o logo. Verifique sua conexão e tente novamente.");
     } finally {
       setIsGenerating(false);
     }
@@ -97,23 +81,17 @@ const LogoGenerator: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-slate-300">Imagem de Referência (Opcional)</label>
+            <label className="text-sm font-semibold text-slate-300">Imagem de Referência (Em breve)</label>
             <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="group cursor-pointer relative overflow-hidden h-40 bg-dark-blue-900 rounded-2xl shadow-neu-sm-in flex flex-col items-center justify-center border-2 border-dashed border-dark-blue-700 hover:border-blue-500/50 transition-all"
+              className="relative overflow-hidden h-40 bg-dark-blue-900 rounded-2xl shadow-neu-sm-in flex flex-col items-center justify-center border-2 border-dashed border-dark-blue-700 opacity-50"
             >
-              {refImage ? (
-                <img src={refImage} className="absolute inset-0 w-full h-full object-cover opacity-60" />
-              ) : (
-                <div className="flex flex-col items-center text-slate-500 group-hover:text-blue-400 transition-colors">
-                  <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="text-xs uppercase tracking-widest font-bold text-center px-2">Carregar Referência</span>
-                </div>
-              )}
+              <div className="flex flex-col items-center text-slate-600">
+                <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-xs uppercase tracking-widest font-bold text-center px-2">Funcionalidade em desenvolvimento</span>
+              </div>
             </div>
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleRefImageUpload} />
           </div>
 
           <button
