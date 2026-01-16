@@ -1,8 +1,23 @@
+const fetch = require('node-fetch');
+
 exports.handler = async (event) => {
+  // Headers CORS
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  };
+
+  // Preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
+  }
+
   // Apenas aceita POST
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers,
       body: JSON.stringify({ error: 'Method Not Allowed' })
     };
   }
@@ -13,6 +28,7 @@ exports.handler = async (event) => {
     if (!prompt) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ error: 'Prompt é obrigatório' })
       };
     }
@@ -45,10 +61,11 @@ exports.handler = async (event) => {
       
       return {
         statusCode: response.status,
+        headers,
         body: JSON.stringify({ 
           error: response.status === 503 
             ? 'Modelo carregando. Tente novamente em 20 segundos.' 
-            : 'Erro ao gerar imagem'
+            : `Erro ao gerar imagem: ${response.status}`
         })
       };
     }
@@ -59,6 +76,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: {
+        ...headers,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -70,7 +88,11 @@ exports.handler = async (event) => {
     console.error('Erro na function:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Erro interno do servidor' })
+      headers,
+      body: JSON.stringify({ 
+        error: 'Erro interno do servidor',
+        details: error.message 
+      })
     };
   }
 };
