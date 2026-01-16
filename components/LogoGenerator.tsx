@@ -2,10 +2,20 @@ import React, { useState, useRef } from 'react';
 
 const LogoGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState('');
+  const [style, setStyle] = useState('modern');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLogo, setGeneratedLogo] = useState<string | null>(null);
   const [refImage, setRefImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const logoStyles = {
+    modern: 'modern minimalist clean geometric',
+    vintage: 'vintage retro classic elegant serif fonts',
+    tech: 'futuristic tech cyberpunk neon gradient',
+    organic: 'organic natural flowing handcrafted artisan',
+    bold: 'bold strong impactful powerful typography',
+    playful: 'playful colorful friendly fun whimsical'
+  };
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -15,12 +25,15 @@ const LogoGenerator: React.FC = () => {
 
     setIsGenerating(true);
     try {
+      const styleModifier = logoStyles[style as keyof typeof logoStyles];
+      const fullPrompt = `${prompt}, ${styleModifier} style`;
+      
       const response = await fetch('/.netlify/functions/generate-logo', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt: fullPrompt })
       });
 
       if (!response.ok) {
@@ -70,6 +83,25 @@ const LogoGenerator: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
         {/* Creation Controls */}
         <div className="space-y-8 p-8 bg-dark-blue-800 rounded-[3rem] shadow-neu-out">
+          <div className="space-y-3">
+            <label className="text-sm font-semibold text-slate-300">Estilo do Logo</label>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.entries(logoStyles).map(([key, value]) => (
+                <button
+                  key={key}
+                  onClick={() => setStyle(key)}
+                  className={`p-3 rounded-xl text-sm font-medium transition-all ${
+                    style === key
+                      ? 'bg-blue-500 text-white shadow-lg'
+                      : 'bg-dark-blue-900 text-slate-400 hover:bg-dark-blue-700'
+                  }`}
+                >
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-3">
             <label className="text-sm font-semibold text-slate-300">Descrição do Logo</label>
             <textarea

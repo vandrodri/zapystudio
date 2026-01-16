@@ -28,10 +28,22 @@ exports.handler = async (event) => {
       };
     }
 
-    const fullPrompt = `professional modern minimalist logo design, ${prompt}, high quality, vector style, clean background, centered, simple, iconic, brand identity`;
+    // Melhora o prompt com palavras-chave profissionais
+    const enhancedPrompt = `
+      professional logo design, ${prompt},
+      minimalist, clean, modern, iconic symbol,
+      vector graphics style, flat design,
+      simple geometry, memorable brand identity,
+      white or transparent background, centered composition,
+      corporate branding, high contrast,
+      award winning design, behance, dribbble style,
+      ultra sharp, 8k quality
+    `.trim().replace(/\s+/g, ' ');
+
+    console.log('Prompt melhorado:', enhancedPrompt);
     
     // Pollinations.ai - API totalmente gratuita, sem necessidade de key
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=1024&height=1024&nologo=true&enhance=true`;
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=1024&height=1024&nologo=true&enhance=true&model=flux`;
 
     console.log('Gerando imagem via Pollinations.ai...');
 
