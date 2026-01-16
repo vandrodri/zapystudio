@@ -33,7 +33,7 @@ exports.handler = async (event) => {
     console.log('Chamando HuggingFace API...');
 
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1",
+      "https://router.huggingface.co/models/stabilityai/stable-diffusion-2-1",
       {
         headers: {
           Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
