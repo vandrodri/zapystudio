@@ -79,6 +79,9 @@ const Editor: React.FC = () => {
         }
       } else {
         ctx.font = `${layer.fontSize}px ${layer.fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
         const textMetrics = ctx.measureText(layer.content);
         const textWidth = textMetrics.width;
         const textHeight = layer.fontSize || 24;
@@ -88,17 +91,16 @@ const Editor: React.FC = () => {
           ctx.fillRect(-textWidth/2 - 15, -textHeight/2 - 10, textWidth + 30, textHeight + 20);
         }
 
-        // Borda do texto
+        // Borda do texto - Deve ser desenhada ANTES do preenchimento e com o mesmo alinhamento
         if (layer.textBorderWidth && layer.textBorderWidth > 0) {
           ctx.strokeStyle = layer.textBorderColor || '#000000';
           ctx.lineWidth = layer.textBorderWidth;
           ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
           ctx.strokeText(layer.content, 0, 0);
         }
 
         ctx.fillStyle = layer.color || '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
         ctx.fillText(layer.content, 0, 0);
       }
       ctx.restore();
