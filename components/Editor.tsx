@@ -88,7 +88,19 @@ const Editor: React.FC = () => {
 
         if (layer.bgColor && layer.bgColor !== 'transparent') {
           ctx.fillStyle = layer.bgColor;
-          ctx.fillRect(-textWidth/2 - 15, -textHeight/2 - 10, textWidth + 30, textHeight + 20);
+          const rectX = -textWidth / 2 - 15;
+          const rectY = -textHeight / 2 - 10;
+          const rectW = textWidth + 30;
+          const rectH = textHeight + 20;
+          const radius = Math.min(rectH / 2, 12); // Arredondamento elegante
+          
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(rectX, rectY, rectW, rectH, radius);
+          } else {
+            ctx.rect(rectX, rectY, rectW, rectH);
+          }
+          ctx.fill();
         }
 
         // Borda do texto - Deve ser desenhada ANTES do preenchimento e com o mesmo alinhamento
@@ -223,7 +235,7 @@ const Editor: React.FC = () => {
         const stroke = layer.textBorderWidth && layer.textBorderWidth > 0 ? `stroke="${layer.textBorderColor}" stroke-width="${layer.textBorderWidth}"` : '';
         svgContent += `<g transform="${transform}">`;
         if (layer.bgColor && layer.bgColor !== 'transparent') {
-           svgContent += `<rect x="-100" y="-40" width="200" height="80" fill="${layer.bgColor}" />`;
+           svgContent += `<rect x="-100" y="-40" width="200" height="80" fill="${layer.bgColor}" rx="12" ry="12" />`;
         }
         svgContent += `<text x="0" y="0" font-family="${layer.fontFamily}" font-size="${layer.fontSize}" fill="${layer.color}" text-anchor="middle" dominant-baseline="middle" ${stroke}>${layer.content}</text>`;
         svgContent += `</g>`;
