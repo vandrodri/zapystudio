@@ -23,6 +23,15 @@ const Editor: React.FC = () => {
 
   const activeLayer = layers.find(l => l.id === activeLayerId);
 
+  const applyMagicFix = () => {
+    // Valores inspirados no "Auto" do iPhone: 
+    // Brilho equilibrado, contraste acentuado, cores vibrantes e nitidez sutil.
+    setBrightness(115);
+    setContrast(125);
+    setVibrance(1.4);
+    setSharpen(25);
+  };
+
   const getPresetLabel = (key: string) => {
     const labels: Record<string, string> = {
       'INSTAGRAM_SQUARE': 'Instagram (Quadrado)',
@@ -477,8 +486,19 @@ const Editor: React.FC = () => {
           </section>
         )}
 
-        <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4">
-          <h2 className="text-xl font-bold text-emerald-400">Ajustes de Foto</h2>
+        <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-emerald-400">Ajustes de Foto</h2>
+            <button
+              onClick={applyMagicFix}
+              className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl shadow-neu-sm-out hover:scale-105 active:scale-95 transition-all"
+            >
+              <svg className="w-4 h-4 text-white group-hover:animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+              </svg>
+              <span className="text-white text-xs font-bold uppercase tracking-tighter">Magic</span>
+            </button>
+          </div>
           
           <div className="space-y-4 p-2">
             <div className="space-y-1">
