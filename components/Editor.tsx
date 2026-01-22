@@ -17,6 +17,11 @@ const Editor: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
+  // Crop State
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropRect, setCropRect] = useState({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }); // 0 to 1 relative
+  const [isResizingCrop, setIsResizingCrop] = useState<string | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -24,8 +29,6 @@ const Editor: React.FC = () => {
   const activeLayer = layers.find(l => l.id === activeLayerId);
 
   const applyMagicFix = () => {
-    // Valores inspirados no "Auto" do iPhone: 
-    // Brilho equilibrado, contraste acentuado, cores vibrantes e nitidez sutil.
     setBrightness(115);
     setContrast(125);
     setVibrance(1.4);
@@ -57,8 +60,6 @@ const Editor: React.FC = () => {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, width, height);
 
-    // Aplicando filtros: Vibrance (saturate), Brilho, Contraste. 
-    // O 'Sharpen' é simulado com um boost adicional de contraste e nitidez visual via filter
     const sharpenEffect = sharpen > 0 ? `contrast(${100 + (sharpen * 0.5)}%)` : '';
     ctx.filter = `saturate(${vibrance}) contrast(${contrast}%) brightness(${brightness}%) ${sharpenEffect}`;
 
@@ -74,6 +75,38 @@ const Editor: React.FC = () => {
           const w = (layer.width || img.width) * (layer.scale || 1);
           const h = (layer.height || img.height) * (layer.scale || 1);
           ctx.drawImage(img, -w / 2, -h / 2, w, h);
+          
+          // Draw Crop Overlay if this layer is being cropped
+          if (isCropping && activeLayerId === layer.id) {
+            // Draw overlay (relative to layer space)
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            
+            const cx = -w/2 + cropRect.x * w;
+            const cy = -h/2 + cropRect.y * h;
+            const cw = cropRect.w * w;
+            const ch = cropRect.h * h;
+
+            // Draw 4 rectangles around crop area
+            ctx.fillRect(-w/2, -h/2, w, cropRect.y * h); // top
+            ctx.fillRect(-w/2, -h/2 + (cropRect.y + cropRect.h) * h, w, (1 - cropRect.y - cropRect.h) * h); // bottom
+            ctx.fillRect(-w/2, cy, cropRect.x * w, ch); // left
+            ctx.fillRect(-w/2 + (cropRect.x + cropRect.w) * w, cy, (1 - cropRect.x - cropRect.w) * w, ch); // right
+
+            // Stroke crop area
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(cx, cy, cw, ch);
+            ctx.setLineDash([]);
+
+            // Draw Handles
+            ctx.fillStyle = '#3b82f6';
+            const handleSize = 10;
+            ctx.beginPath(); ctx.arc(cx, cy, handleSize, 0, Math.PI * 2); ctx.fill(); // TL
+            ctx.beginPath(); ctx.arc(cx + cw, cy, handleSize, 0, Math.PI * 2); ctx.fill(); // TR
+            ctx.beginPath(); ctx.arc(cx, cy + ch, handleSize, 0, Math.PI * 2); ctx.fill(); // BL
+            ctx.beginPath(); ctx.arc(cx + cw, cy + ch, handleSize, 0, Math.PI * 2); ctx.fill(); // BR
+          }
         } else {
            img.onload = () => drawCanvas();
         }
@@ -92,7 +125,7 @@ const Editor: React.FC = () => {
           const rectY = -textHeight / 2 - 10;
           const rectW = textWidth + 30;
           const rectH = textHeight + 20;
-          const radius = Math.min(rectH / 2, 12); // Arredondamento elegante
+          const radius = Math.min(rectH / 2, 12);
           
           ctx.beginPath();
           if (ctx.roundRect) {
@@ -103,7 +136,6 @@ const Editor: React.FC = () => {
           ctx.fill();
         }
 
-        // Borda do texto - Deve ser desenhada ANTES do preenchimento e com o mesmo alinhamento
         if (layer.textBorderWidth && layer.textBorderWidth > 0) {
           ctx.strokeStyle = layer.textBorderColor || '#000000';
           ctx.lineWidth = layer.textBorderWidth;
@@ -124,7 +156,7 @@ const Editor: React.FC = () => {
       ctx.lineWidth = borderWidth * 2;
       ctx.strokeRect(0, 0, width, height);
     }
-  }, [layers, preset, borderWidth, borderColor, vibrance, brightness, contrast, sharpen]);
+  }, [layers, preset, borderWidth, borderColor, vibrance, brightness, contrast, sharpen, isCropping, cropRect, activeLayerId]);
 
   useEffect(() => {
     drawCanvas();
@@ -155,7 +187,6 @@ const Editor: React.FC = () => {
         const canvasDim = PRESETS[preset];
         let initialScale = 0.5;
 
-        // Lógica de redimensionamento para caber na área de edição
         if (isLogo) {
           initialScale = (canvasDim.width * 0.25) / img.width;
         } else {
@@ -211,6 +242,35 @@ const Editor: React.FC = () => {
     if (activeLayerId === id) setActiveLayerId(null);
   };
 
+  const confirmCrop = () => {
+    if (!activeLayer || (activeLayer.type !== 'image' && activeLayer.type !== 'logo')) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const cropCanvas = document.createElement('canvas');
+      const sx = cropRect.x * img.width;
+      const sy = cropRect.y * img.height;
+      const sw = cropRect.w * img.width;
+      const sh = cropRect.h * img.height;
+
+      cropCanvas.width = sw;
+      cropCanvas.height = sh;
+      const cctx = cropCanvas.getContext('2d');
+      if (cctx) {
+        cctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+        const newContent = cropCanvas.toDataURL('image/png');
+        updateLayer(activeLayer.id, { 
+          content: newContent, 
+          width: sw, 
+          height: sh 
+        });
+      }
+      setIsCropping(false);
+      setCropRect({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }); // Reset for next time
+    };
+    img.src = activeLayer.content;
+  };
+
   const exportImage = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -229,7 +289,7 @@ const Editor: React.FC = () => {
       const transform = `translate(${layer.x}, ${layer.y}) rotate(${layer.rotation})`;
       if (layer.type === 'image' || layer.type === 'logo') {
         svgContent += `<g transform="${transform}">`;
-        svgContent += `<image href="${layer.content}" x="-${(width/4) * (layer.scale || 1)}" y="-${(height/4) * (layer.scale || 1)}" width="${(width/2) * (layer.scale || 1)}" height="${(height/2) * (layer.scale || 1)}" />`;
+        svgContent += `<image href="${layer.content}" x="-${(layer.width || 500) / 2 * (layer.scale || 1)}" y="-${(layer.height || 500) / 2 * (layer.scale || 1)}" width="${(layer.width || 500) * (layer.scale || 1)}" height="${(layer.height || 500) * (layer.scale || 1)}" />`;
         svgContent += `</g>`;
       } else {
         const stroke = layer.textBorderWidth && layer.textBorderWidth > 0 ? `stroke="${layer.textBorderColor}" stroke-width="${layer.textBorderWidth}"` : '';
@@ -255,7 +315,6 @@ const Editor: React.FC = () => {
     link.click();
   };
 
-  // Lógica de Arrastar no Canvas
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -264,6 +323,42 @@ const Editor: React.FC = () => {
     const scaleY = canvas.height / rect.height;
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
+
+    if (isCropping && activeLayer) {
+      // Transform mouse to local space to support rotated images
+      const dx = mouseX - activeLayer.x;
+      const dy = mouseY - activeLayer.y;
+      const angle = -(activeLayer.rotation * Math.PI) / 180;
+      const localMouseX = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const localMouseY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+      const w = (activeLayer.width || 0) * (activeLayer.scale || 1);
+      const h = (activeLayer.height || 0) * (activeLayer.scale || 1);
+      
+      const lx = -w/2 + cropRect.x * w;
+      const ly = -h/2 + cropRect.y * h;
+      const lw = cropRect.w * w;
+      const lh = cropRect.h * h;
+
+      const handleRadius = 25; // Larger hit area
+      if (Math.sqrt((localMouseX - lx)**2 + (localMouseY - ly)**2) < handleRadius) {
+        setIsResizingCrop('TL');
+        return;
+      }
+      if (Math.sqrt((localMouseX - (lx + lw))**2 + (localMouseY - ly)**2) < handleRadius) {
+        setIsResizingCrop('TR');
+        return;
+      }
+      if (Math.sqrt((localMouseX - lx)**2 + (localMouseY - (ly + lh))**2) < handleRadius) {
+        setIsResizingCrop('BL');
+        return;
+      }
+      if (Math.sqrt((localMouseX - (lx + lw))**2 + (localMouseY - (ly + lh))**2) < handleRadius) {
+        setIsResizingCrop('BR');
+        return;
+      }
+      return; // Return even if no handle hit to prevent moving layer during crop
+    }
 
     const hitLayer = [...layers].reverse().find(layer => {
       const dx = mouseX - layer.x;
@@ -280,7 +375,6 @@ const Editor: React.FC = () => {
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !activeLayerId) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -288,6 +382,50 @@ const Editor: React.FC = () => {
     const scaleY = canvas.height / rect.height;
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
+
+    if (isCropping && isResizingCrop && activeLayer) {
+      const dx = mouseX - activeLayer.x;
+      const dy = mouseY - activeLayer.y;
+      const angle = -(activeLayer.rotation * Math.PI) / 180;
+      const localMouseX = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const localMouseY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+      const w = (activeLayer.width || 0) * (activeLayer.scale || 1);
+      const h = (activeLayer.height || 0) * (activeLayer.scale || 1);
+      
+      const localX = (localMouseX + w/2) / w;
+      const localY = (localMouseY + h/2) / h;
+
+      const newRect = { ...cropRect };
+      if (isResizingCrop === 'TL') {
+        newRect.w += newRect.x - localX;
+        newRect.h += newRect.y - localY;
+        newRect.x = localX;
+        newRect.y = localY;
+      } else if (isResizingCrop === 'TR') {
+        newRect.w = localX - newRect.x;
+        newRect.h += newRect.y - localY;
+        newRect.y = localY;
+      } else if (isResizingCrop === 'BL') {
+        newRect.w += newRect.x - localX;
+        newRect.x = localX;
+        newRect.h = localY - newRect.y;
+      } else if (isResizingCrop === 'BR') {
+        newRect.w = localX - newRect.x;
+        newRect.h = localY - newRect.y;
+      }
+      
+      // Constraints
+      newRect.x = Math.max(0, Math.min(1, newRect.x));
+      newRect.y = Math.max(0, Math.min(1, newRect.y));
+      newRect.w = Math.max(0.1, Math.min(1 - newRect.x, newRect.w));
+      newRect.h = Math.max(0.1, Math.min(1 - newRect.y, newRect.h));
+
+      setCropRect(newRect);
+      return;
+    }
+
+    if (!isDragging || !activeLayerId) return;
 
     updateLayer(activeLayerId, {
       x: Math.round(mouseX - dragOffset.x),
@@ -297,327 +435,291 @@ const Editor: React.FC = () => {
 
   const handleCanvasMouseUp = () => {
     setIsDragging(false);
+    setIsResizingCrop(null);
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
-      {/* Painel de Controles */}
       <div className="lg:col-span-4 space-y-6 overflow-y-auto custom-scrollbar pr-2 pb-12">
-        <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4">
-          <h2 className="text-xl font-bold text-blue-400">Configuração do Projeto</h2>
-          <div className="space-y-2">
-            <label className="text-sm text-slate-400">Tamanho Predefinido</label>
-            <select
-              value={preset}
-              onChange={(e) => setPreset(e.target.value as SocialPreset)}
-              className="w-full bg-dark-blue-900 border-none rounded-xl p-3 shadow-neu-sm-in outline-none"
-            >
-              {Object.keys(PRESETS).map(key => (
-                <option key={key} value={key}>{getPresetLabel(key)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-dark-blue-700 hover:bg-dark-blue-600 p-3 rounded-xl shadow-neu-sm-out text-xs font-semibold transition-all"
-            >
-              + Foto
-            </button>
-            <button
-              onClick={() => logoInputRef.current?.click()}
-              className="bg-dark-blue-700 hover:bg-dark-blue-600 p-3 rounded-xl shadow-neu-sm-out text-xs font-semibold transition-all"
-            >
-              + Logo
-            </button>
-            <button
-              onClick={addText}
-              className="col-span-2 bg-blue-600 hover:bg-blue-500 p-3 rounded-xl shadow-neu-sm-out text-sm font-semibold transition-all"
-            >
-              + Texto / Título
-            </button>
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.heic" onChange={(e) => handleFileUpload(e, false)} />
-            <input type="file" ref={logoInputRef} className="hidden" accept="image/*,.heic" onChange={(e) => handleFileUpload(e, true)} />
-          </div>
-        </section>
-
-        {activeLayer && (
-          <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-            <h2 className="text-xl font-bold text-indigo-400">Editar Camada ({activeLayer.type === 'text' ? 'Texto' : 'Imagem'})</h2>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500">Posição X</label>
-                <input
-                  type="number"
-                  value={activeLayer.x}
-                  onChange={(e) => updateLayer(activeLayer.id, { x: Number(e.target.value) })}
-                  className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
-                />
+        {!isCropping ? (
+          <>
+            <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4">
+              <h2 className="text-xl font-bold text-blue-400">Configuração do Projeto</h2>
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">Tamanho Predefinido</label>
+                <select
+                  value={preset}
+                  onChange={(e) => setPreset(e.target.value as SocialPreset)}
+                  className="w-full bg-dark-blue-900 border-none rounded-xl p-3 shadow-neu-sm-in outline-none"
+                >
+                  {Object.keys(PRESETS).map(key => (
+                    <option key={key} value={key}>{getPresetLabel(key)}</option>
+                  ))}
+                </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500">Posição Y</label>
-                <input
-                  type="number"
-                  value={activeLayer.y}
-                  onChange={(e) => updateLayer(activeLayer.id, { y: Number(e.target.value) })}
-                  className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-dark-blue-700 hover:bg-dark-blue-600 p-3 rounded-xl shadow-neu-sm-out text-xs font-semibold transition-all"
+                >
+                  + Foto
+                </button>
+                <button
+                  onClick={() => logoInputRef.current?.click()}
+                  className="bg-dark-blue-700 hover:bg-dark-blue-600 p-3 rounded-xl shadow-neu-sm-out text-xs font-semibold transition-all"
+                >
+                  + Logo
+                </button>
+                <button
+                  onClick={addText}
+                  className="col-span-2 bg-blue-600 hover:bg-blue-500 p-3 rounded-xl shadow-neu-sm-out text-sm font-semibold transition-all"
+                >
+                  + Texto / Título
+                </button>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,.heic" onChange={(e) => handleFileUpload(e, false)} />
+                <input type="file" ref={logoInputRef} className="hidden" accept="image/*,.heic" onChange={(e) => handleFileUpload(e, true)} />
               </div>
-            </div>
+            </section>
 
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500 mb-1">
-                <label>Rotação</label>
-                <span>{activeLayer.rotation}°</span>
-              </div>
-              <input
-                type="range"
-                min="-180"
-                max="180"
-                value={activeLayer.rotation}
-                onChange={(e) => updateLayer(activeLayer.id, { rotation: Number(e.target.value) })}
-                className="w-full accent-blue-500"
-              />
-            </div>
-
-            {activeLayer.type === 'text' ? (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs text-slate-500">Texto</label>
-                  <input
-                    type="text"
-                    value={activeLayer.content}
-                    onChange={(e) => updateLayer(activeLayer.id, { content: e.target.value })}
-                    className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
-                  />
-                </div>
+            {activeLayer && (
+              <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <h2 className="text-xl font-bold text-indigo-400">Editar Camada ({activeLayer.type === 'text' ? 'Texto' : 'Imagem'})</h2>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-slate-500">Fonte</label>
-                    <select
-                      value={activeLayer.fontFamily}
-                      onChange={(e) => updateLayer(activeLayer.id, { fontFamily: e.target.value })}
-                      className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none text-xs"
-                    >
-                      {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500">Tamanho</label>
+                    <label className="text-xs text-slate-500">Posição X</label>
                     <input
                       type="number"
-                      value={activeLayer.fontSize}
-                      onChange={(e) => updateLayer(activeLayer.id, { fontSize: Number(e.target.value) })}
+                      value={activeLayer.x}
+                      onChange={(e) => updateLayer(activeLayer.id, { x: Number(e.target.value) })}
+                      className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-slate-500">Posição Y</label>
+                    <input
+                      type="number"
+                      value={activeLayer.y}
+                      onChange={(e) => updateLayer(activeLayer.id, { y: Number(e.target.value) })}
                       className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500">Cor Texto</label>
-                    <input
-                      type="color"
-                      value={activeLayer.color}
-                      onChange={(e) => updateLayer(activeLayer.id, { color: e.target.value })}
-                      className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
-                    />
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500 mb-1">
+                    <label>Rotação</label>
+                    <span>{activeLayer.rotation}°</span>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-slate-500">Cor Fundo (Contraste)</label>
-                    <input
-                      type="color"
-                      value={activeLayer.bgColor}
-                      onChange={(e) => updateLayer(activeLayer.id, { bgColor: e.target.value })}
-                      className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
-                    />
-                  </div>
+                  <input
+                    type="range"
+                    min="-180"
+                    max="180"
+                    value={activeLayer.rotation}
+                    onChange={(e) => updateLayer(activeLayer.id, { rotation: Number(e.target.value) })}
+                    className="w-full accent-blue-500"
+                  />
                 </div>
 
-                <div className="p-3 bg-dark-blue-900/50 rounded-xl border border-dark-blue-700 space-y-3">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-slate-500">Borda do Texto</p>
-                  <div className="grid grid-cols-2 gap-4">
+                {activeLayer.type === 'text' ? (
+                  <div className="space-y-4">
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-500">Espessura</label>
+                      <label className="text-xs text-slate-500">Texto</label>
                       <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={activeLayer.textBorderWidth}
-                        onChange={(e) => updateLayer(activeLayer.id, { textBorderWidth: Number(e.target.value) })}
+                        type="text"
+                        value={activeLayer.content}
+                        onChange={(e) => updateLayer(activeLayer.id, { content: e.target.value })}
                         className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-500">Cor Borda</label>
-                      <input
-                        type="color"
-                        value={activeLayer.textBorderColor}
-                        onChange={(e) => updateLayer(activeLayer.id, { textBorderColor: e.target.value })}
-                        className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
-                      />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-500">Fonte</label>
+                        <select
+                          value={activeLayer.fontFamily}
+                          onChange={(e) => updateLayer(activeLayer.id, { fontFamily: e.target.value })}
+                          className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none text-xs"
+                        >
+                          {FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-500">Tamanho</label>
+                        <input
+                          type="number"
+                          value={activeLayer.fontSize}
+                          onChange={(e) => updateLayer(activeLayer.id, { fontSize: Number(e.target.value) })}
+                          className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-500">Cor Texto</label>
+                        <input
+                          type="color"
+                          value={activeLayer.color}
+                          onChange={(e) => updateLayer(activeLayer.id, { color: e.target.value })}
+                          className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-slate-500">Cor Fundo (Contraste)</label>
+                        <input
+                          type="color"
+                          value={activeLayer.bgColor}
+                          onChange={(e) => updateLayer(activeLayer.id, { bgColor: e.target.value })}
+                          className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <label className="text-xs text-slate-500">Escala (Redimensionar)</label>
-                <input
-                  type="range"
-                  min="0.05"
-                  max="3"
-                  step="0.01"
-                  value={activeLayer.scale}
-                  onChange={(e) => updateLayer(activeLayer.id, { scale: Number(e.target.value) })}
-                  className="w-full accent-blue-500"
-                />
-                <button 
-                  onClick={() => {
-                    const img = new Image();
-                    img.onload = () => {
-                      const scaleW = PRESETS[preset].width / img.width;
-                      const scaleH = PRESETS[preset].height / img.height;
-                      updateLayer(activeLayer.id, { scale: Math.min(scaleW, scaleH) * 0.9, width: img.width, height: img.height });
-                    };
-                    img.src = activeLayer.content;
-                  }}
-                  className="mt-2 w-full py-1 bg-dark-blue-700 hover:bg-dark-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider text-blue-400 transition-colors"
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-500">Escala</label>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="3"
+                        step="0.01"
+                        value={activeLayer.scale}
+                        onChange={(e) => updateLayer(activeLayer.id, { scale: Number(e.target.value) })}
+                        className="w-full accent-blue-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        onClick={() => {
+                          const img = new Image();
+                          img.onload = () => {
+                            const scaleW = PRESETS[preset].width / img.width;
+                            const scaleH = PRESETS[preset].height / img.height;
+                            updateLayer(activeLayer.id, { scale: Math.min(scaleW, scaleH) * 0.9, width: img.width, height: img.height });
+                          };
+                          img.src = activeLayer.content;
+                        }}
+                        className="py-2 bg-dark-blue-700 hover:bg-dark-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider text-blue-400 transition-colors"
+                      >
+                        Ajustar
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setIsCropping(true);
+                          setCropRect({ x: 0.1, y: 0.1, w: 0.8, h: 0.8 });
+                        }}
+                        className="py-2 bg-indigo-600/20 hover:bg-indigo-600/40 rounded-lg text-[10px] font-bold uppercase tracking-wider text-indigo-400 border border-indigo-500/30 transition-colors"
+                      >
+                        Recortar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => deleteLayer(activeLayer.id)}
+                  className="w-full py-2 bg-red-500/20 text-red-400 rounded-xl hover:bg-red-500/30 transition-all border border-red-500/30 text-xs font-bold"
                 >
-                  Ajustar ao Canvas
+                  Remover Camada
+                </button>
+              </section>
+            )}
+
+            <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-emerald-400">Ajustes de Foto</h2>
+                <button
+                  onClick={applyMagicFix}
+                  className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl shadow-neu-sm-out hover:scale-105 active:scale-95 transition-all"
+                >
+                  <svg className="w-4 h-4 text-white group-hover:animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-white text-xs font-bold uppercase tracking-tighter">Magic</span>
                 </button>
               </div>
-            )}
-            
-            <button
-              onClick={() => deleteLayer(activeLayer.id)}
-              className="w-full py-2 bg-red-500/20 text-red-400 rounded-xl hover:bg-red-500/30 transition-all border border-red-500/30 text-xs font-bold"
-            >
-              Remover Camada
-            </button>
+              
+              <div className="space-y-4 p-2">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <label>Brilho</label>
+                    <span>{brightness}%</span>
+                  </div>
+                  <input type="range" min="0" max="200" value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} className="w-full accent-blue-400" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <label>Contraste</label>
+                    <span>{contrast}%</span>
+                  </div>
+                  <input type="range" min="0" max="200" value={contrast} onChange={(e) => setContrast(Number(e.target.value))} className="w-full accent-indigo-400" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <label>Vibração</label>
+                    <span>{Math.round(vibrance * 100)}%</span>
+                  </div>
+                  <input type="range" min="0" max="3" step="0.1" value={vibrance} onChange={(e) => setVibrance(Number(e.target.value))} className="w-full accent-emerald-500" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <label>Aguçar</label>
+                    <span>{sharpen}%</span>
+                  </div>
+                  <input type="range" min="0" max="100" value={sharpen} onChange={(e) => setSharpen(Number(e.target.value))} className="w-full accent-yellow-400" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dark-blue-700">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500">Moldura</label>
+                  <input type="number" value={borderWidth} onChange={(e) => setBorderWidth(Number(e.target.value))} className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-500">Cor</label>
+                  <input type="color" value={borderColor} onChange={(e) => setBorderColor(e.target.value)} className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer" />
+                </div>
+              </div>
+            </section>
+
+            <div className="flex flex-col gap-3">
+              <button onClick={exportImage} className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-neu-out font-bold text-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Exportar PNG
+              </button>
+              <button onClick={exportSVG} className="w-full py-3 bg-dark-blue-700 hover:bg-dark-blue-600 rounded-2xl shadow-neu-out font-bold text-slate-300 transition-all flex items-center justify-center gap-2">
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                Exportar SVG
+              </button>
+            </div>
+          </>
+        ) : (
+          <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-6 animate-in fade-in slide-in-from-left-4">
+            <h2 className="text-xl font-bold text-blue-400">Modo Recorte</h2>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Arraste os cantos no canvas para definir a nova área da imagem.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={confirmCrop}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl shadow-neu-sm-out font-bold transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Confirmar Recorte
+              </button>
+              <button
+                onClick={() => setIsCropping(false)}
+                className="w-full py-3 bg-dark-blue-700 hover:bg-dark-blue-600 text-slate-300 rounded-2xl shadow-neu-sm-out font-bold transition-all"
+              >
+                Cancelar
+              </button>
+            </div>
           </section>
         )}
-
-        <section className="p-6 bg-dark-blue-800 rounded-3xl shadow-neu-out space-y-4 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-emerald-400">Ajustes de Foto</h2>
-            <button
-              onClick={applyMagicFix}
-              className="group flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl shadow-neu-sm-out hover:scale-105 active:scale-95 transition-all"
-            >
-              <svg className="w-4 h-4 text-white group-hover:animate-pulse" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-              </svg>
-              <span className="text-white text-xs font-bold uppercase tracking-tighter">Magic</span>
-            </button>
-          </div>
-          
-          <div className="space-y-4 p-2">
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500">
-                <label>Brilho</label>
-                <span>{brightness}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={brightness}
-                onChange={(e) => setBrightness(Number(e.target.value))}
-                className="w-full accent-blue-400"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500">
-                <label>Contraste</label>
-                <span>{contrast}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={contrast}
-                onChange={(e) => setContrast(Number(e.target.value))}
-                className="w-full accent-indigo-400"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500">
-                <label>Vibração (Saturação)</label>
-                <span>{Math.round(vibrance * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="3"
-                step="0.1"
-                value={vibrance}
-                onChange={(e) => setVibrance(Number(e.target.value))}
-                className="w-full accent-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-slate-500">
-                <label>Aguçar (Nitidez)</label>
-                <span>{sharpen}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={sharpen}
-                onChange={(e) => setSharpen(Number(e.target.value))}
-                className="w-full accent-yellow-400"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dark-blue-700">
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">Moldura (Espessura)</label>
-              <input
-                type="number"
-                value={borderWidth}
-                onChange={(e) => setBorderWidth(Number(e.target.value))}
-                className="w-full bg-dark-blue-900 rounded-lg p-2 shadow-neu-sm-in outline-none"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">Cor Moldura</label>
-              <input
-                type="color"
-                value={borderColor}
-                onChange={(e) => setBorderColor(e.target.value)}
-                className="w-full h-10 bg-dark-blue-900 rounded-lg p-1 shadow-neu-sm-in cursor-pointer"
-              />
-            </div>
-          </div>
-        </section>
-
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={exportImage}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-neu-out font-bold text-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            Exportar PNG
-          </button>
-          <button
-            onClick={exportSVG}
-            className="w-full py-3 bg-dark-blue-700 hover:bg-dark-blue-600 rounded-2xl shadow-neu-out font-bold text-slate-300 transition-all flex items-center justify-center gap-2"
-          >
-             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
-            Exportar SVG (Vetorial)
-          </button>
-        </div>
       </div>
 
-      {/* Canvas Viewport */}
       <div className="lg:col-span-8 bg-dark-blue-800 rounded-[3rem] shadow-neu-in p-8 flex flex-col items-center justify-center min-h-[500px]">
         <div className="relative group max-w-full">
           <canvas
@@ -626,10 +728,10 @@ const Editor: React.FC = () => {
             onMouseMove={handleCanvasMouseMove}
             onMouseUp={handleCanvasMouseUp}
             onMouseLeave={handleCanvasMouseUp}
-            className="max-w-full max-h-[70vh] shadow-2xl rounded-lg cursor-move border border-dark-blue-700 bg-black/20"
+            className={`max-w-full max-h-[70vh] shadow-2xl rounded-lg border border-dark-blue-700 bg-black/20 ${isCropping ? 'cursor-crosshair' : 'cursor-move'}`}
           />
           <div className="absolute top-4 right-4 flex flex-col gap-2">
-            {layers.length > 0 && layers.map((layer, idx) => (
+            {!isCropping && layers.length > 0 && layers.map((layer, idx) => (
               <button
                 key={layer.id}
                 onClick={() => setActiveLayerId(layer.id)}
@@ -651,7 +753,9 @@ const Editor: React.FC = () => {
           <p className="text-slate-400 text-sm font-medium">
             Resolução: <span className="text-blue-400">{PRESETS[preset].width} x {PRESETS[preset].height}</span> • Camadas: <span className="text-indigo-400">{layers.length}</span>
           </p>
-          <p className="text-[10px] text-slate-600 uppercase tracking-widest">Dica: Clique e arraste elementos diretamente no canvas</p>
+          <p className="text-[10px] text-slate-600 uppercase tracking-widest">
+            {isCropping ? 'Ajuste a moldura azul para recortar' : 'Dica: Clique e arraste elementos diretamente no canvas'}
+          </p>
         </div>
       </div>
     </div>
