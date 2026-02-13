@@ -1,5 +1,5 @@
 {
-  "name": "InstaVibrant Studio",
+  "name": "instavibrant-studio",
   "description": "A professional social media image editor and AI logo generator featuring vibrant filters, multi-layer text editing, and neumorphic dark-blue design.",
   "requestFramePermissions": [
     "camera"

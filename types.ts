@@ -28,6 +28,7 @@ export interface Layer {
   scale?: number;
   textBorderWidth?: number;
   textBorderColor?: string;
+  exifData?: string; // Metadados EXIF preservados
 }
 
 export interface CanvasDimensions {

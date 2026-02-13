@@ -1,0 +1,20 @@
+{
+	"geolocation": {
+		"data": {
+			"city": "São Bernardo do Campo",
+			"country": {
+				"code": "BR",
+				"name": "Brazil"
+			},
+			"subdivision": {
+				"code": "SP",
+				"name": "São Paulo"
+			},
+			"timezone": "America/Sao_Paulo",
+			"latitude": -23.695,
+			"longitude": -46.5616,
+			"postalCode": "09843"
+		},
+		"timestamp": 1769465180379
+	}
+}

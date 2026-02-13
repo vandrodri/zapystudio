@@ -1,53 +1,56 @@
+
 import React, { useState, useRef } from 'react';
+import { GoogleGenAI } from "@google/genai";
 
 const LogoGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState('');
-  const [style, setStyle] = useState('modern');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedLogo, setGeneratedLogo] = useState<string | null>(null);
   const [refImage, setRefImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const logoStyles = {
-    modern: 'modern minimalist clean geometric',
-    vintage: 'vintage retro classic elegant serif fonts',
-    tech: 'futuristic tech cyberpunk neon gradient',
-    organic: 'organic natural flowing handcrafted artisan',
-    bold: 'bold strong impactful powerful typography',
-    playful: 'playful colorful friendly fun whimsical'
-  };
-
   const handleGenerate = async () => {
-    if (!prompt.trim()) {
-      alert("Por favor, descreva o logo que você quer gerar!");
-      return;
-    }
+    if (!prompt.trim() && !refImage) return;
 
     setIsGenerating(true);
     try {
-      const styleModifier = logoStyles[style as keyof typeof logoStyles];
-      const fullPrompt = `${prompt}, ${styleModifier} style`;
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      const response = await fetch('/.netlify/functions/generate-logo', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ prompt: fullPrompt })
-      });
+      const contents: any = {
+        parts: [
+          { text: `Create a professional, modern, minimalist logo. Theme: ${prompt}. High quality, 4k, vector style, white background, centered.` }
+        ]
+      };
 
-      if (!response.ok) {
-        const error = await response.json();
-        alert(error.error || 'Erro ao gerar logo');
-        return;
+      if (refImage) {
+        contents.parts.push({
+          inlineData: {
+            data: refImage.split(',')[1],
+            mimeType: 'image/png'
+          }
+        });
       }
 
-      const data = await response.json();
-      setGeneratedLogo(data.image);
-      
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents,
+        config: {
+          imageConfig: {
+            aspectRatio: "1:1"
+          }
+        }
+      });
+
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          const base64EncodeString = part.inlineData.data;
+          setGeneratedLogo(`data:image/png;base64,${base64EncodeString}`);
+          break;
+        }
+      }
     } catch (error) {
       console.error("Erro na geração do logo:", error);
-      alert("Falha ao gerar o logo. Verifique sua conexão e tente novamente.");
+      alert("Falha ao gerar o logo. Verifique o console para mais detalhes.");
     } finally {
       setIsGenerating(false);
     }
@@ -80,7 +83,6 @@ const LogoGenerator: React.FC = () => {
     link.href = url;
     link.download = `logo-ia-${Date.now()}.svg`;
     link.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -96,25 +98,6 @@ const LogoGenerator: React.FC = () => {
         {/* Creation Controls */}
         <div className="space-y-8 p-8 bg-dark-blue-800 rounded-[3rem] shadow-neu-out">
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-slate-300">Estilo do Logo</label>
-            <div className="grid grid-cols-2 gap-3">
-              {Object.entries(logoStyles).map(([key, value]) => (
-                <button
-                  key={key}
-                  onClick={() => setStyle(key)}
-                  className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                    style === key
-                      ? 'bg-blue-500 text-white shadow-lg'
-                      : 'bg-dark-blue-900 text-slate-400 hover:bg-dark-blue-700'
-                  }`}
-                >
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
             <label className="text-sm font-semibold text-slate-300">Descrição do Logo</label>
             <textarea
               placeholder="Ex: Uma empresa de tecnologia futurista chamada 'Nova', usando tons de azul profundo e prata..."
@@ -125,17 +108,23 @@ const LogoGenerator: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-slate-300">Imagem de Referência (Em breve)</label>
+            <label className="text-sm font-semibold text-slate-300">Imagem de Referência (Opcional)</label>
             <div 
-              className="relative overflow-hidden h-40 bg-dark-blue-900 rounded-2xl shadow-neu-sm-in flex flex-col items-center justify-center border-2 border-dashed border-dark-blue-700 opacity-50"
+              onClick={() => fileInputRef.current?.click()}
+              className="group cursor-pointer relative overflow-hidden h-40 bg-dark-blue-900 rounded-2xl shadow-neu-sm-in flex flex-col items-center justify-center border-2 border-dashed border-dark-blue-700 hover:border-blue-500/50 transition-all"
             >
-              <div className="flex flex-col items-center text-slate-600">
-                <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="text-xs uppercase tracking-widest font-bold text-center px-2">Funcionalidade em desenvolvimento</span>
-              </div>
+              {refImage ? (
+                <img src={refImage} className="absolute inset-0 w-full h-full object-cover opacity-60" />
+              ) : (
+                <div className="flex flex-col items-center text-slate-500 group-hover:text-blue-400 transition-colors">
+                  <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span className="text-xs uppercase tracking-widest font-bold text-center px-2">Carregar Referência</span>
+                </div>
+              )}
             </div>
+            <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleRefImageUpload} />
           </div>
 
           <button
